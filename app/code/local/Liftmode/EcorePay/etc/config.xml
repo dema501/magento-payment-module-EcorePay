@@ -1,0 +1,76 @@
+<?xml version="1.0"?>
+<!--
+/**
+ *
+ * @category   Mage
+ * @package    Liftmode_EcorePay
+ * @copyright  Copyright (c)  Dmitry Bashlov, contributors.
+ */
+-->
+<config>
+    <modules>
+        <Liftmode_EcorePay>
+            <version>0.0.1</version>
+        </Liftmode_EcorePay>
+    </modules>
+    <global>
+        <models>
+            <ecorepay>
+                <class>Liftmode_EcorePay_Model</class>
+            </ecorepay>
+        </models>
+        <helpers>
+            <ecorepay>
+                <class>Liftmode_EcorePay_Helper</class>
+            </ecorepay>
+        </helpers>
+    </global>
+    <frontend>
+        <translate>
+            <modules>
+                <Liftmode_EcorePay>
+                    <files>
+                        <default>Liftmode_EcorePay.csv</default>
+                    </files>
+                </Liftmode_EcorePay>
+            </modules>
+        </translate>
+    </frontend>
+    <adminhtml>
+        <translate>
+            <modules>
+                <Liftmode_EcorePay>
+                    <files>
+                        <default>Liftmode_EcorePay.csv</default>
+                    </files>
+                </Liftmode_EcorePay>
+            </modules>
+        </translate>
+    </adminhtml>
+    <default>
+        <payment>
+            <ecorepay>
+                <active>0</active>
+                <model>ecorepay/method_EcorePay</model>
+                <order_status>pending_payment</order_status>
+                <title>eCorePay</title>
+                <gatewayurl>https://gateway.ecorepay.cc/</gatewayurl>
+                <allowspecific>1</allowspecific>
+                <payment_action>authorize_capture</payment_action>
+                <cctypes>VI,MC</cctypes>
+            </ecorepay>
+         </payment>
+    </default>
+    <crontab>
+        <jobs>
+            <ecorepay>
+                <schedule>
+                    <cron_expr>*/30 * * * *</cron_expr>
+                </schedule>
+                <run>
+                    <model>ecorepay/async::cron</model>
+                </run>
+            </ecorepay>
+        </jobs>
+    </crontab>
+</config>

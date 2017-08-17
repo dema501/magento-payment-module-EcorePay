@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<!--
+/**
+ *
+ * @category   Mage
+ * @package    Liftmode_EcorePay
+ * @copyright  Copyright (c)  Dmitry Bashlov, contributors.
+ */
+-->
+<config>
+    <modules>
+        <Liftmode_EcorePay>
+            <active>true</active>
+            <codePool>local</codePool>
+            <depends>
+                <Mage_Payment/>
+                <Mage_Checkout/>
+            </depends>
+        </Liftmode_EcorePay>
+    </modules>
+</config>
