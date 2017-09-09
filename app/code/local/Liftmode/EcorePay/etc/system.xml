@@ -55,6 +55,7 @@
                             <show_in_website>1</show_in_website>
                             <show_in_store>0</show_in_store>
                         </authcode>
+<!--
                         <acidmc translate="label">
                             <label>Account ID (MC)</label>
                             <comment>This is your 8 digit account ID.</comment>
@@ -73,6 +74,7 @@
                             <show_in_website>1</show_in_website>
                             <show_in_store>0</show_in_store>
                         </authcodemc>
+-->
                         <gatewayurl translate="label">
                             <label>API Test</label>
                             <frontend_type>text</frontend_type>

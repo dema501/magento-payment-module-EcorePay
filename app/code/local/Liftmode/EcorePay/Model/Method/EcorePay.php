@@ -41,7 +41,7 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
 
         $payment->setTransactionId($data->TransactionID)
                 ->setAdditionalInformation(serialize($data->asXML()))
-                ->setIsTransactionClosed(0);
+                ->setIsTransactionClosed(false);
 
         return $this;
     }
@@ -78,8 +78,8 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
         $data = $this->_doSale($payment);
 
         $payment->setTransactionId($data->TransactionID)
-                ->setAdditionalInformation(serialize($data))
-                ->setIsTransactionClosed(0);
+                ->setAdditionalInformation($data->asXML())
+                ->setIsTransactionClosed(true);
 
         return $this;
     }
@@ -159,12 +159,17 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
 
 
         $xmlData = $this->arrayToXML($data, new SimpleXMLElement('<Request type="Refund" />'), 'child_name_to_replace_numeric_integers');
-        list ($resCode, $resData) =  $this->_doPost($xmlData);
 
-        $this->_doValidate($resCode, $resData, $xmlData, 110);
+        $this->_doValidate(...$this->_doPost($xmlData), ...[$xmlData, 110]);
 
         return $this;
     }
+
+    public function log($data)
+    {
+        Mage::log($data, null, 'EcorePay.log');
+    }
+
 
     /**
      * Parent transaction id getter
@@ -189,12 +194,15 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
     }
 
     private function getAccountId($type) {
-        return $type == 'MC' ? $this->getConfigData('acidmc') : $this->getConfigData('acid');
+//        return $type == 'MC' ? $this->getConfigData('acidmc') : $this->getConfigData('acid');
+        return $this->getConfigData('acid');
     }
 
     private function getAuthCode($type) {
-        return $type == 'MC' ? $this->getConfigData('authcodemc') : $this->getConfigData('authcode');
+//        return $type == 'MC' ? $this->getConfigData('authcodemc') : $this->getConfigData('authcode');
+        return $this->getConfigData('authcode');
     }
+
 
     private function _doSale(Varien_Object $payment)
     {
@@ -204,6 +212,23 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
         $region = strval($billingAddress->getRegionCode());
         if (!(empty($region) == false && preg_match("/^[A-Za-z]{2,7}$/i", $region))) {
             $region = 'XX';
+        }
+
+        $country = strval($billingAddress->getCountry());
+        $dob = ''; $ssn = '';
+
+        if ($country == 'US') {
+            $dob = str_replace("-", "", substr($order->getCustomerDob(), 0, 10));
+
+            if(empty($dob)){
+                $min  = strtotime("jan 1st -47 years");
+                $max  = strtotime("dec 31st -18 years");
+                $time = rand($min, $max);
+                $dob  = date("Ymd", $time);
+            }
+
+//            $digits = 4;
+//            $ssn = rand(pow(10, $digits-1), pow(10, $digits)-1);
         }
 
         $data = array (
@@ -222,9 +247,9 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
                 "City"         => strval($billingAddress->getCity()), // Yes, The customer’s /cardholders billing city. Characters allowed: a-z A-Z
                 "State"        => strval($region), //Yes, The customer’s/cardholder’s state. Characters allowed: a-z A-Z
                 "PostCode"     => strval($billingAddress->getPostcode()), // Yes, The customer’s/cardholder’s state. Characters allowed: a-z A-Z
-                "Country"      => strval($billingAddress->getCountry()), // Yes, The ISO-3166 2 character country code of the customer/cardholder. (See reference table at end of this document).
-                "DOB"          => "", // No, The customer’s date of birth. Format YYYYMMDD
-                "SSN"          => "", // No, Social Security Number (Last Four (4) Digits Only, US Customers)
+                "Country"      => $country, // Yes, The ISO-3166 2 character country code of the customer/cardholder. (See reference table at end of this document).
+                "DOB"          => $dob, // No, The customer’s date of birth. Format YYYYMMDD
+                "SSN"          => $ssn, // No, Social Security Number (Last Four (4) Digits Only, US Customers)
                 "CardNumber"   => strval($payment->getCcNumber()), // Yes, The credit card number, numeric only (no spaces, no non-numeric).
                 "CardExpMonth" => strval($payment->getCcExpMonth()), //Yes, The credit card expiry month, numeric only (leading zero okay).
                 "CardExpYear"  => strval($payment->getCcExpYear()), // Yes, The credit card expiry year, numeric only (full 4 digit).
@@ -233,9 +258,31 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
         );
 
         $xmlData = $this->arrayToXML($data, new SimpleXMLElement('<Request type="AuthorizeCapture" />'), 'child_name_to_replace_numeric_integers');
-        list ($resCode, $resData) =  $this->_doPost($xmlData);
 
-        return $this->_doValidate($resCode, $resData, $xmlData, 100);
+        return $this->_doValidate(...$this->_doPost($xmlData), ...[$xmlData, 100]);
+    }
+
+
+    public function _doGetStatus(Varien_Object $payment)
+    {
+        $order = $payment->getOrder();
+
+        $orderTransactionId = $this->_getParentTransactionId($order->getPayment());
+
+        if ($orderTransactionId) {
+            $data = array (
+                "AccountID" => $this->getAccountId($payment->getCcType()),
+                "AccountAuth" => $this->getAuthCode($payment->getCcType()),
+                "Transaction" => array(
+                    "Reference"     => $order->getIncrementId(), // Yes, This is an optional element that contains your reference number. It is a string of up to 32 characters and can be used to cross- reference between EcorePay’s system and your own.
+                    "TransactionID" => $orderTransactionId, // Yes, The 3 or 4 digit credit card CVV code.
+                )
+            );
+
+            $xmlData = $this->arrayToXML($data, new SimpleXMLElement('<Request type="Lookup" />'), 'child_name_to_replace_numeric_integers');
+
+            return $this->_doValidate(...$this->_doPost($xmlData), ...[$xmlData, array(100, 110)]);
+        }
     }
 
 
@@ -243,17 +290,21 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
     {
         $resDataCode = (int) $resData->ResponseCode;
 
-        if ($resDataCode !== $expectedCode) {
+        $this->log(array('_doValidate--->', $resCode, $resData->asXML(), $postData, $expectedCode));
+
+        if (
+            (is_array($expectedCode) && !in_array($resDataCode, $expectedCode)) ||
+            (!is_array($expectedCode) && $resDataCode !== $expectedCode)
+        ) {
             $message = strval($resData->Description);
 
-            Mage::log(array('_doValidate--->', $resCode, $message, $resData->asXML(), $postData, $expectedCode), null, 'EcorePay.log');
             Mage::throwException(Mage::helper('ecorepay')->__("Error during process payment: response code: %s, %s", $resDataCode, $message));
         }
 
         return $resData;
     }
 
-    private function _doRequest($url, $extReqHeaders = array(), $extOpts = array())
+    private function _doRequest($url, $extReqHeaders = array(), $extReqOpts = array())
     {
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
@@ -272,7 +323,7 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
 
         curl_setopt($ch, CURLOPT_HTTPHEADER, array_merge($reqHeaders, $extReqHeaders));
 
-        foreach ($extOpts as $key => $value) {
+        foreach ($extReqOpts as $key => $value) {
             curl_setopt($ch, $key, $value);
         }
 
@@ -281,16 +332,19 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
         list ($respHeaders, $body) = explode("\r\n\r\n", $resp, 2);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
+        $errCode = curl_errno($ch);
+        $errMessage = curl_error($ch);
+
+        curl_close($ch);
+
         if (!empty($body)) {
             $body = simplexml_load_string($body);
         }
 
-        if (curl_errno($ch) || curl_error($ch)) {
-            Mage::log(array($httpCode, $body, $query, $extReqHeaders, $extOpts, curl_error($ch)), null, 'EcorePay.log');
-            Mage::throwException(curl_error($ch));
+        if ($errCode || $errMessage) {
+            $this->log(array('doRequest', 'url' => $url, 'httpRespCode' => $httpCode, 'httpRespHeaders' => $respHeaders, 'httpRespBody' => $body, 'httpReqHeaders' => array_merge($reqHeaders, $extReqHeaders), 'httpReqExtraOptions' => $extReqOpts, 'errCode' => $errCode, 'errMessage' => $errMessage));
+            Mage::throwException(Mage::helper('ecorepay')->__("Error during process payment: response code: %s %s", $httpCode, $errMessage));
         }
-
-        curl_close($ch);
 
         return array($httpCode, $body);
     }
