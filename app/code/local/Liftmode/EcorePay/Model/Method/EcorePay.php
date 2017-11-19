@@ -32,7 +32,7 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
     public function authorize(Varien_Object $payment, $amount)
     {
         if ($amount <= 0) {
-            Mage::throwException(Mage::helper('ecorepay')->__('Invalid amount for authorization.'));
+            Mage::throwException(Mage::helper($this->_code)->__('Invalid amount for authorization.'));
         }
 
         $payment->setAmount($amount);
@@ -70,7 +70,7 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
     public function capture(Varien_Object $payment, $amount)
     {
         if ($amount <= 0) {
-            Mage::throwException(Mage::helper('ecorepay')->__('Invalid amount for authorization.'));
+            Mage::throwException(Mage::helper($this->_code)->__('Invalid amount for authorization.'));
         }
 
         $payment->setAmount($amount);
@@ -168,6 +168,43 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
     public function log($data)
     {
         Mage::log($data, null, 'EcorePay.log');
+    }
+
+
+    private function _sanitizeData($data) {
+        if (is_string($data)) {
+            return  preg_replace(
+                        '/<AccountAuth>([^<]*)<\/AccountAuth>/i',
+                        '<AccountAuth>***</AccountAuth>',
+                        preg_replace(
+                            '/<CardNumber>[^<]*([^<]{4})<\/CardNumber>/i',
+                            '<CardNumber>***$1</CardNumber>',
+                            preg_replace(
+                                '/<CardCVV>([^"]*)<\/CardCVV>/i',
+                                '<CardCVV>***</CardCVV>',
+                                $data
+                            )
+                        )
+                    );
+        }
+
+        if (is_array($data)) {
+            foreach ($data as $k => $v) {
+                if (is_array($v)) {
+                    return $this->_sanitizeData($v);
+                } else {
+                    if (in_array($k, array('ccnumber', 'CardNumber')) {
+                        $data[$k] = "***" . substr($data[$k], -4);
+                    }
+
+                    if (in_array($k, array('cvv', 'CardCVV', 'AccountAuth')) {
+                        $data[$k] = "***";
+                    }
+                }
+            }
+        }
+
+        return $data;
     }
 
 
@@ -298,7 +335,15 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
         ) {
             $message = strval($resData->Description);
 
-            Mage::throwException(Mage::helper('ecorepay')->__("Error during process payment: response code: %s, %s", $resDataCode, $message));
+            if (Mage::getStoreConfig('slack/general/enable_notification')) {
+                $notificationModel   = Mage::getSingleton('mhauri_slack/notification');
+                $notificationModel->setMessage(
+                    Mage::helper($this->_code)->__("*Ecorepay payment failed with data:*\nEcorepay response ```%s %s```\n\nData sent ```%s```", $resDataCode, $message, $this->_sanitizeData($postData))
+                )->send(array('icon_emoji' => ':cop::skin-tone-3:'));
+            }
+
+
+            Mage::throwException(Mage::helper($this->_code)->__("Error during process payment: response code: %s, %s", $resDataCode, $message));
         }
 
         return $resData;
@@ -343,7 +388,16 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
 
         if ($errCode || $errMessage) {
             $this->log(array('doRequest', 'url' => $url, 'httpRespCode' => $httpCode, 'httpRespHeaders' => $respHeaders, 'httpRespBody' => $body, 'httpReqHeaders' => array_merge($reqHeaders, $extReqHeaders), 'httpReqExtraOptions' => $extReqOpts, 'errCode' => $errCode, 'errMessage' => $errMessage));
-            Mage::throwException(Mage::helper('ecorepay')->__("Error during process payment: response code: %s %s", $httpCode, $errMessage));
+
+            if (Mage::getStoreConfig('slack/general/enable_notification')) {
+                $notificationModel   = Mage::getSingleton('mhauri_slack/notification');
+                $notificationModel->setMessage(
+                    Mage::helper($this->_code)->__("*Ecorepay payment failed with data:*\nEcorepay response ```%s %s```\n\nData sent ```%s```", $httpCode, $errMessage, $this->_sanitizeData(!empty($extReqOpts[CURLOPT_POSTFIELDS]) ? $extReqOpts[CURLOPT_POSTFIELDS] : ''))
+                )->send(array('icon_emoji' => ':cop::skin-tone-3:'));
+            }
+
+
+            Mage::throwException(Mage::helper($this->_code)->__("Error during process payment: response code: %s %s", $httpCode, $errMessage));
         }
 
         return array($httpCode, $body);
@@ -371,6 +425,7 @@ class Liftmode_EcorePay_Model_Method_EcorePay extends Mage_Payment_Model_Method_
 
         return $xml->asXML();
     }
+
 
     private function getIpAddress() {
         $ipaddress = '127.0.0.1';

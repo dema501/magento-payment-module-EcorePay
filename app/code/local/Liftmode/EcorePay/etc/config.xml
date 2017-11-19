@@ -10,7 +10,7 @@
 <config>
     <modules>
         <Liftmode_EcorePay>
-            <version>0.0.1</version>
+            <version>0.0.2</version>
         </Liftmode_EcorePay>
     </modules>
     <global>

@@ -24,11 +24,11 @@ class Liftmode_EcorePay_Model_Async extends Mage_Core_Model_Abstract
         try {
             $data = $this->_model->_doGetStatus($order->getPayment());
 
+            $this->_model->log(array('syncOrderStatus------>>>', $data, $order->getIncrementId()));
+
             if (!empty($data)) {
                 $this->putOrderOnProcessing($order);
-                Mage::getSingleton('adminhtml/session')->addSuccess('Payment has been sent for orderId: ' . $order->getIncrementId());
             } else {
-                $this->_model->log(array('syncOrderStatus------>>>No-transaction', $order->getIncrementId()));
                 $this->putOrderOnHold($order, 'No transaction found, you should manually make invoice');
             }
 
